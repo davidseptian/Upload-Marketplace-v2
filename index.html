@@ -284,7 +284,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     pjk: /^(Article 22 Income Tax withheld|PPh Pasal 22 dipungut)$/
   };
   function ttIncome(wb) {
-    var r = rows(wb, 'Detail pesanan'), h = (r[0] || []).map(str), idx = {};
+    var snDet = wb.Sheets['Detail pesanan'] ? 'Detail pesanan' : (wb.Sheets['Order details'] ? 'Order details' : 'Detail pesanan'), snLap = wb.Sheets['Laporan'] ? 'Laporan' : (wb.Sheets['Reports'] ? 'Reports' : 'Laporan');
+    var r = rows(wb, snDet), h = (r[0] || []).map(str), idx = {};
     Object.keys(TP).forEach(function (k) { idx[k] = []; h.forEach(function (c, i) { if (TP[k].test(c)) idx[k].push(i); }); });
     var si = -1, src = -1; h.forEach(function (c, i) { if (si < 0 && /^(Total settlement amount|Jumlah penyelesaian pembayaran)$/.test(c)) si = i; if (src < 0 && /^(Order Source|Sumber pesanan)$/.test(c)) src = i; });
     if (si < 0) throw new Error('Kolom "Jumlah penyelesaian pembayaran" tidak ada di sheet "Detail pesanan"');
@@ -301,7 +302,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     ordr.forEach(function (c) { if (!seen[c.id]) { seen[c.id] = 1; pen.push(c); } });
     var peny = all.filter(function (c) { return !isOrder(c) && !/Pembayaran GMV untuk Iklan TikTok|GMV Payment for TikTok Ads/.test(c.jenis); }).map(function (c) { return { tgl: c.cair, ch: c.ch, jenis: c.jenis, jumlah: c.tot, ref: c.id }; });
     // Laporan: periode, total, iklan
-    var lap = wb.Sheets['Laporan'] ? rows(wb, 'Laporan') : [], periode = null, totalLap = null, iklan = 0;
+    var lap = wb.Sheets[snLap] ? rows(wb, snLap) : [], periode = null, totalLap = null, iklan = 0;
     lap.forEach(function (x) {
       var cells = x.filter(function (z) { return z !== '' && z !== null && z !== undefined; }), lab = str(cells[0]), nilai = null;
       for (var j = 1; j < cells.length; j++) { var v = num(cells[j]); if (v !== null && !/\//.test(String(cells[j]))) { nilai = v; break; } }
@@ -328,7 +329,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var d = ttIncome(wbs.ttIncome); R.pencairan = R.pencairan.concat(d.pen); R.penyesuaian = d.penyesuaian;
       var t2 = d.pen.reduce(function (x, y) { return x + y.tot; }, 0), p2 = d.penyesuaian.reduce(function (x, y) { return x + y.jumlah; }, 0);
       R.info.push('TikTok/Tokopedia penghasilan: ' + d.pen.length + ' order cair, total ' + rp(t2) + (d.penyesuaian.length ? '; ' + d.penyesuaian.length + ' penyesuaian' : ''));
-      if (d.totalLaporan !== null) { var gmv = d.iklanDiDetail ? 0 : (d.iklan > 0 ? d.iklan : 0), sel = (d.totalSemua - gmv) - d.totalLaporan; var batas = Math.max(100000, 0.03 * Math.abs(d.totalLaporan)); R.cek.push({ nama: 'TikTok: detail pesanan dikurangi iklan GMV vs "Jumlah penyelesaian pembayaran" laporan', a: d.totalSemua - gmv, b: d.totalLaporan, ok: Math.abs(sel) <= 1, peringatan: Math.abs(sel) > 1 && Math.abs(sel) <= batas, catatan: Math.abs(sel) > batas ? 'Selisih ' + rp(sel) + ': sheet Detail pesanan kemungkinan tidak lengkap (terpotong). Unduh ulang file income TikTok sebelum mengimpor pencairan TikTok.' : (Math.abs(sel) > 1 ? 'Selisih ' + rp(sel) + ': biasanya ongkir/biaya logistik di laporan yang tidak ada di detail per pesanan. Total per order tetap dari detail.' : '') }); }
+      if (d.totalLaporan !== null) { var gmv = d.iklanDiDetail ? 0 : (d.iklan > 0 ? d.iklan : 0), sel = (d.totalSemua - gmv) - d.totalLaporan; var batas = Math.max(100000, 0.10 * Math.abs(d.totalLaporan)), pr = d.totalLaporan ? Math.abs(sel) / Math.abs(d.totalLaporan) * 100 : 0; R.cek.push({ nama: 'TikTok: detail pesanan dikurangi iklan GMV vs "Jumlah penyelesaian pembayaran" laporan', a: d.totalSemua - gmv, b: d.totalLaporan, ok: Math.abs(sel) <= 1, peringatan: Math.abs(sel) > 1 && Math.abs(sel) <= batas, catatan: Math.abs(sel) > batas ? 'Selisih ' + rp(sel) + ' (' + pr.toFixed(0) + '% dari laporan): sheet Detail pesanan kemungkinan tidak lengkap (terpotong). Unduh ulang file income TikTok sebelum mengimpor pencairan TikTok.' : (pr > 3 ? 'Selisih ' + rp(sel) + ' (' + pr.toFixed(1) + '% dari laporan), lebih besar dari biasanya (1–2%): kemungkinan ongkir, logistik, atau kompensasi di Laporan yang tidak ada per pesanan. Total per order tetap dari detail.' : (Math.abs(sel) > 1 ? 'Selisih ' + rp(sel) + ': biasanya ongkir/biaya logistik di laporan yang tidak ada di detail per pesanan. Total per order tetap dari detail.' : '')) }); }
       if (d.iklan > 0 && d.periode) R.iklan.push({ tgl: d.periode[1], ch: 'TIKTOK', jenis: 'GMV Max / Iklan TikTok', jumlah: d.iklan, mulai: d.periode[0], selesai: d.periode[1], sumber: 'Laporan TikTok ' + d.periode[0] + ' s/d ' + d.periode[1] + ' > Pembayaran GMV untuk Iklan TikTok', catatan: Math.round(d.iklan / 222000) + ' transaksi x Rp222.000' });
     }
     // pemeriksaan internal
@@ -360,7 +361,7 @@ $('#pic').onchange=e=>{try{localStorage.setItem('hypotech_crm_pic',e.target.valu
 function status(){const ok=$('#apiUrl').value.trim()&&$('#apiKey').value;$('#badge').classList.toggle('live',!!ok);$('#badgeTxt').textContent=ok?'Siap menulis ke Master 2':'Belum terhubung'}
 status();
 const JENIS={shopeeOrder:'Shopee · Pesanan (Order.all)',shopeeIncome:'Shopee · Penghasilan (Income)',ttOrder:'TikTok/Tokopedia · Pesanan',ttIncome:'TikTok/Tokopedia · Penghasilan'};
-function kenali(wb){const n=wb.SheetNames;if(n.indexOf('orders')>=0)return'shopeeOrder';if(n.indexOf('OrderSKUList')>=0)return'ttOrder';if(n.indexOf('Penghasilan')>=0&&n.indexOf('Summary')>=0)return'shopeeIncome';if(n.indexOf('Detail pesanan')>=0)return'ttIncome';return null}
+function kenali(wb){const n=wb.SheetNames;if(n.indexOf('orders')>=0)return'shopeeOrder';if(n.indexOf('OrderSKUList')>=0)return'ttOrder';if(n.indexOf('Penghasilan')>=0&&n.indexOf('Summary')>=0)return'shopeeIncome';if(n.indexOf('Detail pesanan')>=0||n.indexOf('Order details')>=0)return'ttIncome';return null}
 $('#drop').onclick=()=>$('#fi').click();
 ['dragover','dragenter'].forEach(e=>$('#drop').addEventListener(e,x=>{x.preventDefault();$('#drop').classList.add('on')}));
 ['dragleave','drop'].forEach(e=>$('#drop').addEventListener(e,x=>{x.preventDefault();$('#drop').classList.remove('on')}));
