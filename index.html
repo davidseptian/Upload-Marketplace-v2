@@ -197,6 +197,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   function str(x) { return x === null || x === undefined ? '' : String(x).trim(); }
   function rows(wb, nama) {
     var ws = wb.Sheets[nama]; if (!ws) throw new Error('Sheet "' + nama + '" tidak ada di file');
+    /* Beberapa ekspor (TikTok) menulis dimensi sheet terlalu kecil (mis. A1:X19) padahal isinya ratusan baris; hitung area dari sel yang ada. */
+    var mr = 0, mc = 0, ada = false; Object.keys(ws).forEach(function (k) { if (k.charAt(0) === '!') return; var a = XL.utils.decode_cell(k); ada = true; if (a.r > mr) mr = a.r; if (a.c > mc) mc = a.c; });
+    if (ada) { var d0 = ws['!ref'] ? XL.utils.decode_range(ws['!ref']) : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } }; if (mr > d0.e.r || mc > d0.e.c) ws['!ref'] = XL.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(mr, d0.e.r), c: Math.max(mc, d0.e.c) } }); }
     return XL.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
   }
   function tabel(wb, nama, hdrIdx, wajib) {
@@ -306,8 +309,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       if (/^(Jumlah penyelesaian pembayaran|Total settlement amount)$/.test(lab) && nilai !== null && totalLap === null) totalLap = nilai;
       if (/^(Pembayaran GMV untuk Iklan TikTok|GMV Payment for TikTok Ads)$/.test(lab) && nilai !== null) iklan = -nilai;
     });
+    var gmvDet = all.filter(function (c) { return /Pembayaran GMV untuk Iklan TikTok|GMV Payment for TikTok Ads/.test(c.jenis); }).reduce(function (x, y) { return x + y.tot; }, 0), iklanDiDetail = gmvDet < 0;
     if (!iklan) { var g = all.filter(function (c) { return /Pembayaran GMV untuk Iklan TikTok|GMV Payment for TikTok Ads/.test(c.jenis); }).reduce(function (x, y) { return x + y.tot; }, 0); if (g < 0) iklan = -g; }
-    return { pen: pen, penyesuaian: peny, periode: periode, totalLaporan: totalLap, totalSemua: totalSemua, iklan: iklan, nonOrderTotal: all.filter(function (c) { return !isOrder(c); }).reduce(function (x, y) { return x + y.tot; }, 0) };
+    return { iklanDiDetail: iklanDiDetail, pen: pen, penyesuaian: peny, periode: periode, totalLaporan: totalLap, totalSemua: totalSemua, iklan: iklan, nonOrderTotal: all.filter(function (c) { return !isOrder(c); }).reduce(function (x, y) { return x + y.tot; }, 0) };
   }
   /* ---------- gabung ---------- */
   function proses(wbs) {
@@ -324,7 +328,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var d = ttIncome(wbs.ttIncome); R.pencairan = R.pencairan.concat(d.pen); R.penyesuaian = d.penyesuaian;
       var t2 = d.pen.reduce(function (x, y) { return x + y.tot; }, 0), p2 = d.penyesuaian.reduce(function (x, y) { return x + y.jumlah; }, 0);
       R.info.push('TikTok/Tokopedia penghasilan: ' + d.pen.length + ' order cair, total ' + rp(t2) + (d.penyesuaian.length ? '; ' + d.penyesuaian.length + ' penyesuaian' : ''));
-      if (d.totalLaporan !== null) { var gmv = d.iklan > 0 ? d.iklan : 0, sel = (d.totalSemua - gmv) - d.totalLaporan; var batas = Math.max(100000, 0.03 * Math.abs(d.totalLaporan)); R.cek.push({ nama: 'TikTok: detail pesanan dikurangi iklan GMV vs "Jumlah penyelesaian pembayaran" laporan', a: d.totalSemua - gmv, b: d.totalLaporan, ok: Math.abs(sel) <= 1, peringatan: Math.abs(sel) > 1 && Math.abs(sel) <= batas, catatan: Math.abs(sel) > batas ? 'Selisih ' + rp(sel) + ': sheet Detail pesanan kemungkinan tidak lengkap (terpotong). Unduh ulang file income TikTok sebelum mengimpor pencairan TikTok.' : (Math.abs(sel) > 1 ? 'Selisih ' + rp(sel) + ': biasanya ongkir/biaya logistik di laporan yang tidak ada di detail per pesanan. Total per order tetap dari detail.' : '') }); }
+      if (d.totalLaporan !== null) { var gmv = d.iklanDiDetail ? 0 : (d.iklan > 0 ? d.iklan : 0), sel = (d.totalSemua - gmv) - d.totalLaporan; var batas = Math.max(100000, 0.03 * Math.abs(d.totalLaporan)); R.cek.push({ nama: 'TikTok: detail pesanan dikurangi iklan GMV vs "Jumlah penyelesaian pembayaran" laporan', a: d.totalSemua - gmv, b: d.totalLaporan, ok: Math.abs(sel) <= 1, peringatan: Math.abs(sel) > 1 && Math.abs(sel) <= batas, catatan: Math.abs(sel) > batas ? 'Selisih ' + rp(sel) + ': sheet Detail pesanan kemungkinan tidak lengkap (terpotong). Unduh ulang file income TikTok sebelum mengimpor pencairan TikTok.' : (Math.abs(sel) > 1 ? 'Selisih ' + rp(sel) + ': biasanya ongkir/biaya logistik di laporan yang tidak ada di detail per pesanan. Total per order tetap dari detail.' : '') }); }
       if (d.iklan > 0 && d.periode) R.iklan.push({ tgl: d.periode[1], ch: 'TIKTOK', jenis: 'GMV Max / Iklan TikTok', jumlah: d.iklan, mulai: d.periode[0], selesai: d.periode[1], sumber: 'Laporan TikTok ' + d.periode[0] + ' s/d ' + d.periode[1] + ' > Pembayaran GMV untuk Iklan TikTok', catatan: Math.round(d.iklan / 222000) + ' transaksi x Rp222.000' });
     }
     // pemeriksaan internal
