@@ -391,10 +391,10 @@ function rencana(){const ocs=pecah(R.orders,150).map(c=>{const ids=new Set(c.map
   if(!pcs.length&&(R.penyesuaian.length||R.iklan.length))pcs.push({pencairan:[],ids_upload:ids,sumber:'impor dashboard',penyesuaian:R.penyesuaian,iklan:R.iklan});
   return{ocs,pcs}}
 async function jalankan(dry){
-  const {ocs,pcs}=rencana(),tot=ocs.length+pcs.length;let i=0;const A={baru:0,sudah_ada:0,status_diperbarui:0,baris_produk:0,pembeli_baru:0,sku:{},pc:0,pcSudah:0,ordUpd:0,tanpaOrder:0,pn:0,ik:0,ikTolak:[]};
+  const {ocs,pcs}=rencana(),tot=ocs.length+pcs.length;let i=0;const A={baru:0,sudah_ada:0,status_diperbarui:0,baris_produk:0,pembeli_baru:0,sku:{},pc:0,pcSudah:0,ordUpd:0,tanpaOrder:0,pn:0,ik:0,ikTolak:[],ikGanti:[],ikSama:0};
   $('#pgw').style.display='block';const prog=()=>{$('#pg').style.width=(i/tot*100)+'%';$('#stat').textContent=(dry?'Simulasi':'Impor')+' '+i+'/'+tot};prog();
   for(const c of ocs){const r=await post('impor_pesanan',c,dry);A.baru+=r.baru;A.sudah_ada+=r.sudah_ada;A.status_diperbarui+=r.status_diperbarui;A.baris_produk+=r.baris_produk;A.pembeli_baru+=r.pembeli_baru;Object.keys(r.sku_tidak_dikenal||{}).forEach(k=>A.sku[k]=(A.sku[k]||0)+r.sku_tidak_dikenal[k]);i++;prog()}
-  for(const c of pcs){const r=await post('impor_pencairan',c,dry);A.pc+=r.pencairan_baru;A.pcSudah+=r.pencairan_sudah_ada;A.ordUpd+=r.order_diperbarui;A.tanpaOrder+=r.pencairan_tanpa_order;A.pn+=r.penyesuaian_baru;A.ik+=r.iklan_baru;A.ikTolak=A.ikTolak.concat(r.iklan_tumpang_tindih||[]);i++;prog()}
+  for(const c of pcs){const r=await post('impor_pencairan',c,dry);A.pc+=r.pencairan_baru;A.pcSudah+=r.pencairan_sudah_ada;A.ordUpd+=r.order_diperbarui;A.tanpaOrder+=r.pencairan_tanpa_order;A.pn+=r.penyesuaian_baru;A.ik+=r.iklan_baru;A.ikGanti=A.ikGanti.concat(r.iklan_diganti_info||[]);A.ikSama+=r.iklan_sudah_ada||0;A.ikTolak=A.ikTolak.concat(r.iklan_tumpang_tindih||[]);i++;prog()}
   return A}
 function tampilSim(A,dry){const sk=Object.keys(A.sku);
   $('#simOut').innerHTML=(dry?'':`<div class="d" style="margin:0 0 6px;color:var(--gold-light)"><b>Ringkasan impor</b> · ${new Date().toLocaleString('id-ID')} · PIC ${esc($('#pic').value)}</div>`)+`<div class="tw"><table><tbody>
@@ -402,17 +402,17 @@ function tampilSim(A,dry){const sk=Object.keys(A.sku);
   <tr><td>Baris produk baru</td><td>${A.baris_produk}</td></tr><tr><td>Pembeli Shopee baru</td><td>${A.pembeli_baru}</td></tr>
   <tr><td>Pencairan baru</td><td><b>${A.pc}</b></td></tr><tr><td>Pencairan sudah ada (dilewati)</td><td>${A.pcSudah}</td></tr>
   <tr><td>Order di Master 2 yang diisi Pendapatan_Bersih</td><td>${A.ordUpd}</td></tr><tr><td>Pencairan tanpa order di Master 2</td><td>${A.tanpaOrder}</td></tr>
-  <tr><td>Penyesuaian baru / iklan baru</td><td>${A.pn} / ${A.ik}</td></tr></tbody></table></div>`+
+  <tr><td>Penyesuaian baru / iklan baru / iklan diganti</td><td>${A.pn} / ${A.ik} / ${A.ikGanti.length}</td></tr></tbody></table></div>`+
   (sk.length?`<div class="note" style="border-color:#6b2323;background:#2a1212;color:#ffb3b3"><b>SKU tidak ada di Master 1:</b> ${sk.slice(0,12).map(esc).join(', ')}. Tambahkan dulu ke M_SKU, lalu simulasi ulang.</div>`:'')+
-  (A.ikTolak.length?`<div class="note"><b>Iklan dilewati:</b> periode ${A.ikTolak.map(esc).join(', ')} tumpang tindih dengan data iklan yang sudah ada (mencegah hitung ganda).</div>`:'')+
-  (dry?(A.baru+A.pc+A.pn+A.ik+A.status_diperbarui===0?'<div class="note">Tidak ada yang baru: semua sudah ada di Master 2.</div>':''):'<div class="note" style="border-color:#1d5b24;background:#0f2013;color:#9fe6a8"><b>Selesai.</b> Data masuk ke Master 2 dan dicatat di LOG_PERUBAHAN.</div>')}
+  (A.ikGanti.length?`<div class="note"><b>Iklan ${dry?'akan diganti':'diganti'}:</b> ${A.ikGanti.map(esc).join('; ')}. Baris lama yang tercakup penuh oleh periode baru diganti satu baris, jejaknya ada di kolom Catatan.</div>`:'')+(A.ikTolak.length?`<div class="note"><b>Iklan dilewati:</b> periode ${A.ikTolak.map(esc).join(', ')} tumpang tindih sebagian dengan data iklan yang sudah ada (mencegah hitung ganda).</div>`:'')+
+  (dry?(A.baru+A.pc+A.pn+A.ik+A.ikGanti.length+A.status_diperbarui===0?'<div class="note">Tidak ada yang baru: semua sudah ada di Master 2.</div>':''):'<div class="note" style="border-color:#1d5b24;background:#0f2013;color:#9fe6a8"><b>Selesai.</b> Data masuk ke Master 2 dan dicatat di LOG_PERUBAHAN.</div>')}
 function segarkan(){if(!SIM){$('#impBtn').disabled=true;return}$('#impBtn').disabled=Object.keys(SIM.sku).length>0||SIM.kosong||(SIM.gagal&&!$('#paksa').checked)}
 $('#paksa').onchange=segarkan;
 $('#simBtn').onclick=async()=>{if(!R)return;$('#simBtn').disabled=true;$('#impBtn').disabled=true;$('#simOut').innerHTML='';
-  try{const A=await jalankan(true);SIM=A;tampilSim(A,true);$('#stat').textContent='Simulasi selesai';SIM.kosong=A.baru+A.pc+A.pn+A.ik+A.status_diperbarui===0;SIM.gagal=R.cek.some(c=>!c.ok&&!c.peringatan);$('#paksaW').style.display=SIM.gagal?'block':'none';$('#paksa').checked=false;segarkan()}catch(e){$('#simOut').innerHTML=`<div class="note" style="border-color:#6b2323;background:#2a1212;color:#ffb3b3">${esc(e.message)}</div>`;$('#stat').textContent=''}
+  try{const A=await jalankan(true);SIM=A;tampilSim(A,true);$('#stat').textContent='Simulasi selesai';SIM.kosong=A.baru+A.pc+A.pn+A.ik+A.ikGanti.length+A.status_diperbarui===0;SIM.gagal=R.cek.some(c=>!c.ok&&!c.peringatan);$('#paksaW').style.display=SIM.gagal?'block':'none';$('#paksa').checked=false;segarkan()}catch(e){$('#simOut').innerHTML=`<div class="note" style="border-color:#6b2323;background:#2a1212;color:#ffb3b3">${esc(e.message)}</div>`;$('#stat').textContent=''}
   $('#simBtn').disabled=false};
 $('#impBtn').onclick=async()=>{if(!SIM||!R)return;if(!confirm('Tulis '+SIM.baru+' order baru dan '+SIM.pc+' pencairan baru ke Master 2?'))return;$('#simBtn').disabled=true;$('#impBtn').disabled=true;
-  try{const A=await jalankan(false);const ringkas=`Impor dashboard Upload: ${A.baru} order baru, ${A.baris_produk} baris produk, ${A.pc} pencairan, ${A.status_diperbarui} status diperbarui, ${A.pn} penyesuaian, ${A.ik} iklan. File: ${Object.values(NAMA).filter(x=>x&&x.indexOf('.')>0).join('; ').slice(0,200)}`;
+  try{const A=await jalankan(false);const ringkas=`Impor dashboard Upload: ${A.baru} order baru, ${A.baris_produk} baris produk, ${A.pc} pencairan, ${A.status_diperbarui} status diperbarui, ${A.pn} penyesuaian, ${A.ik} iklan baru, ${A.ikGanti.length} iklan diganti${A.ikGanti.length?' ('+A.ikGanti.join('; ')+')':''}. File: ${Object.values(NAMA).filter(x=>x&&x.indexOf('.')>0).join('; ').slice(0,200)}`;
     const cekTxt=R.cek.map(c=>(c.ok?'OK':c.peringatan?'Perhatian':'Gagal')+': '+c.nama).join('; ').slice(0,280);
     await post('impor_log',{ringkas,hasil_uji:cekTxt},false);tampilSim(A,false);$('#stat').textContent='Selesai. Tekan Bersihkan untuk mulai lagi';SIM=null;$('#paksaW').style.display='none'}
   catch(e){$('#simOut').innerHTML+=`<div class="note" style="border-color:#6b2323;background:#2a1212;color:#ffb3b3">Berhenti: ${esc(e.message)}. Yang sudah tertulis tidak akan dobel bila impor diulang.</div>`;}
