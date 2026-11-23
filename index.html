@@ -125,6 +125,17 @@ tr.rw{cursor:pointer}tr.rw:hover td{background:#1f1e1c}
 .ck b{min-width:20px}
 .btn:disabled{opacity:.35;cursor:not-allowed;filter:grayscale(.6)}
 </style>
+<script>
+/* Kunci rahasia: default hanya untuk sesi tab ini; tersimpan di perangkat bila "Ingat di perangkat ini" dicentang */
+const KEYN='hypotech_v2_key',INGAT='hypotech_v2_ingat';
+function lihatK(){try{const ingat=localStorage.getItem(INGAT)==='1',ls=localStorage.getItem(KEYN),ss=sessionStorage.getItem(KEYN);
+const cb=document.getElementById('ingat');if(cb)cb.checked=ingat;
+if(!ingat&&ls){sessionStorage.setItem(KEYN,ls);localStorage.removeItem(KEYN);return ls}
+return ss||(ingat?ls:null)||null}catch(e){return null}}
+function simpanK(k){try{const cb=document.getElementById('ingat'),ingat=!!(cb&&cb.checked);localStorage.setItem(INGAT,ingat?'1':'0');
+if(ingat){localStorage.setItem(KEYN,k);sessionStorage.removeItem(KEYN)}else{sessionStorage.setItem(KEYN,k);localStorage.removeItem(KEYN)}}catch(e){}}
+function hapusK(){try{localStorage.removeItem(KEYN);sessionStorage.removeItem(KEYN)}catch(e){}}
+</script>
 </head>
 <body>
 <div class="wrap">
@@ -141,7 +152,7 @@ tr.rw{cursor:pointer}tr.rw:hover td{background:#1f1e1c}
 </header>
 <div class="cfg" id="cfg">
   <input type="text" id="apiUrl" placeholder="URL Web App Apps Script (…/exec)">
-  <input type="password" id="apiKey" placeholder="Kunci rahasia" autocomplete="off" style="max-width:220px">
+  <input type="password" id="apiKey" placeholder="Kunci rahasia" autocomplete="off" style="max-width:220px"><label style="display:inline-flex;gap:6px;align-items:center;font-size:12px;opacity:.85;margin-left:8px;cursor:pointer" title="Kalau dicentang, kunci tersimpan di browser ini. Kalau tidak, kunci hilang saat tab ditutup."><input type="checkbox" id="ingat"> Ingat di perangkat ini</label>
   <button class="btn gold" id="saveBtn">Simpan</button>
   <button class="btn" id="resetBtn">Hapus kunci</button>
 </div>
@@ -353,10 +364,10 @@ const $=s=>document.querySelector(s),esc=s=>String(s==null?'':s).replace(/[&<>"'
 const rp=n=>(n<0?'-':'')+'Rp'+Math.round(Math.abs(n||0)).toLocaleString('id-ID');
 HYIMP.setXL(XLSX);
 let WB={},NAMA={},R=null,SIM=null;
-try{const u=localStorage.getItem('hypotech_v2_api'),k=localStorage.getItem('hypotech_v2_key'),p=localStorage.getItem('hypotech_crm_pic');if(u)$('#apiUrl').value=u;if(k)$('#apiKey').value=k;if(p)$('#pic').value=p}catch(e){}
+try{const u=localStorage.getItem('hypotech_v2_api'),k=lihatK(),p=localStorage.getItem('hypotech_crm_pic');if(u)$('#apiUrl').value=u;if(k)$('#apiKey').value=k;if(p)$('#pic').value=p}catch(e){}
 $('#cfgBtn').onclick=()=>$('#cfg').classList.toggle('on');
-$('#saveBtn').onclick=()=>{try{localStorage.setItem('hypotech_v2_api',$('#apiUrl').value.trim());localStorage.setItem('hypotech_v2_key',$('#apiKey').value)}catch(e){}$('#cfg').classList.remove('on');status()};
-$('#resetBtn').onclick=()=>{try{localStorage.removeItem('hypotech_v2_key');localStorage.removeItem('hypotech_v2_api')}catch(e){}$('#apiKey').value='';status()};
+$('#saveBtn').onclick=()=>{try{localStorage.setItem('hypotech_v2_api',$('#apiUrl').value.trim());simpanK($('#apiKey').value)}catch(e){}$('#cfg').classList.remove('on');status()};
+$('#resetBtn').onclick=()=>{try{hapusK();localStorage.removeItem('hypotech_v2_api')}catch(e){}$('#apiKey').value='';status()};
 $('#pic').onchange=e=>{try{localStorage.setItem('hypotech_crm_pic',e.target.value)}catch(x){}};
 function status(){const ok=$('#apiUrl').value.trim()&&$('#apiKey').value;$('#badge').classList.toggle('live',!!ok);$('#badgeTxt').textContent=ok?'Siap menulis ke Master 2':'Belum terhubung'}
 status();
